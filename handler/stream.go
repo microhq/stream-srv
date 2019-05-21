@@ -6,16 +6,17 @@ import (
 	"io"
 	"sync"
 
-	"github.com/google/uuid"
 	"github.com/micro/go-log"
 
+	"github.com/microhq/stream-srv/mux"
 	pb "github.com/microhq/stream-srv/proto/stream"
+	"github.com/microhq/stream-srv/sub"
 )
 
 // Dispatcher dispatches new messages to all subscribers
 type Dispatcher struct {
 	// s is a subscription to dispatch streams to
-	s *Subscription
+	s *sub.Subscription
 }
 
 // Dispatch dispatches the message to all subscribers in subscription s
@@ -29,10 +30,10 @@ func (d *Dispatcher) Dispatch(ch <-chan *pb.Msg, done chan struct{}, wg *sync.Wa
 			return
 		case msg := <-ch:
 			log.Logf("Dispatching message to subscribers on stream: %d", id)
-			for _, sub := range d.s.GetSubs() {
-				if err := sub.stream.Send(msg); err != nil {
+			for _, sub := range d.s.GetSubs().AsList() {
+				if err := sub.GetStream().Send(msg); err != nil {
 					// send the error down subscriber error channel
-					sub.errChan <- err
+					sub.GetErrChan() <- err
 				}
 			}
 		}
@@ -42,7 +43,7 @@ func (d *Dispatcher) Dispatch(ch <-chan *pb.Msg, done chan struct{}, wg *sync.Wa
 // Stream is a data stream
 type Stream struct {
 	// Mux maps stream ids to subscribers to allow stream multiplexing
-	Mux *Mux
+	Mux *mux.Mux
 	// done channel notifies running goroutines to finish their tasks
 	done chan struct{}
 	// wg tracks running goroutines
@@ -50,7 +51,7 @@ type Stream struct {
 }
 
 func NewStream() (*Stream, error) {
-	mux, err := NewMux()
+	mux, err := mux.New()
 	if err != nil {
 		return nil, err
 	}
@@ -125,12 +126,15 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 	log.Logf("Received Stream.Subscribe request for stream: %d", req.Id)
 
 	streamId := req.Id
-	ID := uuid.New()
-	errChan := make(chan error, 1)
-	sub := &Subscriber{ID, stream, errChan, 0}
+	errCount := 0
+
+	sub, err := sub.NewSubscriber(stream)
+	if err != nil {
+		return fmt.Errorf("Failed to create subscriber: %s", err)
+	}
 
 	if err := s.Mux.AddSub(streamId, sub); err != nil {
-		return fmt.Errorf("Failed to subscribe %v to stream %d", ID, streamId)
+		return fmt.Errorf("Failed to subscribe %v to stream %d", sub.GetID(), streamId)
 	}
 
 	for {
@@ -141,13 +145,13 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 				log.Logf("Error closing subscription stream %d: %s", streamId, err)
 			}
 			return s.Mux.RemSub(streamId, sub)
-		case err := <-sub.errChan:
+		case err := <-sub.GetErrChan():
 			// TODO: handle this better: might want to count and remove subscriber
 			if err != nil {
 				log.Logf("Error receiving message on stream %d: %s", streamId, err)
-				sub.errCount++
+				errCount++
 			}
-			if sub.errCount > 5 {
+			if errCount > 5 {
 				// NOTE: this is an arbitrary selected value
 				log.Logf("Error threshold reached for %s on stream: %d", sub.ID, streamId)
 				return s.Mux.RemSub(streamId, sub)
