@@ -92,7 +92,7 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 }
 
 func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) error {
-	var id int64
+	var id string
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
@@ -134,7 +134,7 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 	}
 
 	if err := s.Mux.AddSub(streamId, sub); err != nil {
-		return fmt.Errorf("Failed to subscribe %v to stream %d", sub.GetID(), streamId)
+		return fmt.Errorf("Failed to subscribe %v to stream %s", sub.GetID(), streamId)
 	}
 
 	for {

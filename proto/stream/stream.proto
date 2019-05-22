@@ -9,18 +9,18 @@ service Stream {
 }
 
 message CreateRequest {
-	int64 id = 1;
+	string id = 1;
 }
 
 message CreateResponse {}
 
 message Msg {
-        int64 id = 1;
+        string id = 1;
         bytes data = 2;
 }
 
 message PubResponse {}
 
 message SubscribeRequest {
-        int64 id = 1;
+        string id = 1;
 }

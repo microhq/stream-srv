@@ -20,7 +20,7 @@ func main() {
 
 	client := pb.NewStreamService("go.micro.srv.stream", service.Client())
 
-	id := int64(1)
+	id := "1"
 
 	stream, err := client.Subscribe(context.Background(), &pb.SubscribeRequest{Id: id})
 	if err != nil {

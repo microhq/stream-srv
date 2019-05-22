@@ -21,7 +21,7 @@ func main() {
 
 	client := pb.NewStreamService("go.micro.srv.stream", service.Client())
 
-	id := int64(1)
+	id := "1"
 	_, err := client.Create(context.Background(), &pb.CreateRequest{Id: id})
 	if err != nil {
 		log.Fatal(err)

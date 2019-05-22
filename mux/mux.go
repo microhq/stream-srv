@@ -12,31 +12,31 @@ import (
 // Mux allows to multiplex streams to their subscribers
 type Mux struct {
 	// m maps stream to subscriptions
-	m map[int64]*sub.Subscription
+	m map[string]*sub.Subscription
 	sync.Mutex
 }
 
 // New creates new Mux and returns it
 func New() (*Mux, error) {
-	m := make(map[int64]*sub.Subscription)
+	m := make(map[string]*sub.Subscription)
 
 	return &Mux{m: m}, nil
 }
 
 // Add adds new stream to Mux
-func (m *Mux) Add(id int64) error {
+func (m *Mux) Add(id string) error {
 	m.Lock()
 	defer m.Unlock()
 
 	if _, ok := m.m[id]; ok {
-		return fmt.Errorf("Stream already exists: %d", id)
+		return fmt.Errorf("Stream already exists: %s", id)
 	}
 
-	log.Logf("Adding stream: %d", id)
+	log.Logf("Adding stream: %s", id)
 
 	s, err := sub.New(id)
 	if err != nil {
-		return fmt.Errorf("Failed to add stream %d: %s", id, err)
+		return fmt.Errorf("Failed to add stream %s: %s", id, err)
 	}
 
 	m.m[id] = s
@@ -45,27 +45,27 @@ func (m *Mux) Add(id int64) error {
 }
 
 // Remove removes stream from Mux
-func (m *Mux) Remove(id int64) error {
+func (m *Mux) Remove(id string) error {
 	m.Lock()
 	defer m.Unlock()
 
 	if _, ok := m.m[id]; ok {
-		return fmt.Errorf("Stream does not exist: %d", id)
+		return fmt.Errorf("Stream does not exist: %s", id)
 	}
 
-	log.Logf("Removing stream: %d", id)
+	log.Logf("Removing stream: %s", id)
 	delete(m.m, id)
 
 	return nil
 }
 
 // AddSub adds new subscriber to stream id
-func (m *Mux) AddSub(id int64, s *sub.Subscriber) error {
+func (m *Mux) AddSub(id string, s *sub.Subscriber) error {
 	m.Lock()
 	defer m.Unlock()
 
 	if _, ok := m.m[id]; !ok {
-		return fmt.Errorf("Stream does not exist: %d", id)
+		return fmt.Errorf("Stream does not exist: %s", id)
 	}
 
 	if err := m.m[id].GetSubs().Add(s); err != nil {
@@ -76,12 +76,12 @@ func (m *Mux) AddSub(id int64, s *sub.Subscriber) error {
 }
 
 // RemSub removes subscriber from stream id
-func (m *Mux) RemSub(id int64, s *sub.Subscriber) error {
+func (m *Mux) RemSub(id string, s *sub.Subscriber) error {
 	m.Lock()
 	defer m.Unlock()
 
 	if _, ok := m.m[id]; !ok {
-		return fmt.Errorf("Stream does not exist: %d", id)
+		return fmt.Errorf("Stream does not exist: %s", id)
 	}
 
 	if err := m.m[id].GetSubs().Remove(s.ID); err != nil {
@@ -92,21 +92,21 @@ func (m *Mux) RemSub(id int64, s *sub.Subscriber) error {
 }
 
 // GetSubscription returns subscription for given stream id
-func (m *Mux) GetSubscription(id int64) (*sub.Subscription, error) {
+func (m *Mux) GetSubscription(id string) (*sub.Subscription, error) {
 	m.Lock()
 	defer m.Unlock()
 
 	if _, ok := m.m[id]; !ok {
-		return nil, fmt.Errorf("Stream does not exist: %d", id)
+		return nil, fmt.Errorf("Stream does not exist: %s", id)
 	}
 
 	return m.m[id], nil
 }
 
 // GetChan returns message channel for given stream
-func (m *Mux) GetChan(id int64) (chan *pb.Msg, error) {
+func (m *Mux) GetChan(id string) (chan *pb.Msg, error) {
 	if _, ok := m.m[id]; !ok {
-		return nil, fmt.Errorf("Stream does not exist: %d", id)
+		return nil, fmt.Errorf("Stream does not exist: %s", id)
 	}
 
 	return m.m[id].GetChan(), nil

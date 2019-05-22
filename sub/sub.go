@@ -112,7 +112,7 @@ func (s *Subscribers) AsList() []*Subscriber {
 // Subscription provides a stream subscription
 type Subscription struct {
 	// id is stream id
-	id int64
+	id string
 	// ch is channel for streaming messages
 	ch chan *pb.Msg
 	// subs is a map of subscribers
@@ -120,7 +120,7 @@ type Subscription struct {
 }
 
 // New creates new subscription
-func New(id int64) (*Subscription, error) {
+func New(id string) (*Subscription, error) {
 	ch := make(chan *pb.Msg)
 	smap := make(map[uuid.UUID]*Subscriber)
 	subs := &Subscribers{smap: smap}
@@ -143,6 +143,6 @@ func (s *Subscription) GetSubs() *Subscribers {
 }
 
 // GetID gets Subscription ID
-func (s *Subscription) GetID() int64 {
+func (s *Subscription) GetID() string {
 	return s.id
 }
