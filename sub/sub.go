@@ -60,6 +60,7 @@ func (s *subscriber) Stream() pb.Stream_SubscribeStream {
 
 // Stop closes subscriber channel
 func (s *subscriber) Stop() error {
+	log.Logf("Stopping subscriber: %s", s.id)
 	close(s.done)
 	return nil
 }
@@ -98,8 +99,6 @@ func (s *subscribers) Add(_s Subscriber) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Logf("Adding new subscriber: %s", _s.ID())
-
 	if _, ok := s.sMap[_s.ID()]; ok {
 		return fmt.Errorf("Subscriber already exists: %v", _s.ID())
 	}
@@ -113,8 +112,6 @@ func (s *subscribers) Add(_s Subscriber) error {
 func (s *subscribers) Remove(id uuid.UUID) error {
 	s.Lock()
 	defer s.Unlock()
-
-	log.Logf("Removing subscriber %s", id)
 
 	delete(s.sMap, id)
 
@@ -136,8 +133,6 @@ func (s *subscribers) AsList() []Subscriber {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Log("Retrieveing subscribers")
-
 	subs := make([]Subscriber, len(s.sMap))
 
 	i := 0
@@ -146,7 +141,7 @@ func (s *subscribers) AsList() []Subscriber {
 		i++
 	}
 
-	log.Logf("Subscribers retrieved: %d", len(subs))
+	log.Logf("Subscribers detected: %d", len(subs))
 
 	return subs
 }
@@ -227,7 +222,9 @@ func (d *dispatcher) Subscribers() Subscribers {
 
 // Stop stops dispatcher
 func (d *dispatcher) Stop() error {
+	// close the channels
 	close(d.done)
+	close(d.in)
 
 	// notify all subscribers to finish
 	for _, s := range d.s.sMap {

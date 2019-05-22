@@ -57,7 +57,7 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 	for {
 		msg, err := stream.Recv()
 		if err == io.EOF {
-			log.Log("Stream publisher disconnected: %d", msg.Id)
+			log.Logf("Stream publisher disconnected")
 			break
 		}
 
@@ -116,6 +116,7 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 				log.Logf("Error receiving message on stream %d: %s", id, err)
 				errCount++
 			}
+
 			// NOTE: this is an arbitrary selected value
 			if errCount > 5 {
 				log.Logf("Error threshold reached for subscriber %s on stream: %d", sub.ID(), id)

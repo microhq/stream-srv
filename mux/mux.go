@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/go-log/log"
+	"github.com/micro/go-log"
 	pb "github.com/microhq/stream-srv/proto/stream"
 	"github.com/microhq/stream-srv/sub"
 )
@@ -59,7 +59,7 @@ func (m *Mux) RemoveStream(id int64) error {
 	m.Lock()
 	defer m.Unlock()
 
-	if _, ok := m.m[id]; ok {
+	if _, ok := m.m[id]; !ok {
 		return fmt.Errorf("Stream does not exist: %d", id)
 	}
 
@@ -83,6 +83,8 @@ func (m *Mux) AddSub(id int64, s sub.Subscriber) error {
 		return fmt.Errorf("Stream does not exist: %d", id)
 	}
 
+	log.Logf("Adding subcriber %s to stream: %d", s.ID(), id)
+
 	if err := m.m[id].Subscribers().Add(s); err != nil {
 		return err
 	}
@@ -98,6 +100,8 @@ func (m *Mux) RemSub(id int64, s sub.Subscriber) error {
 	if _, ok := m.m[id]; !ok {
 		return fmt.Errorf("Stream does not exist: %d", id)
 	}
+
+	log.Logf("Removing subcriber %s from stream: %d", s.ID(), id)
 
 	if err := m.m[id].Subscribers().Remove(s.ID()); err != nil {
 		return err
@@ -115,6 +119,8 @@ func (m *Mux) Publish(msg *pb.Msg) error {
 	if _, ok := m.m[id]; !ok {
 		return fmt.Errorf("Stream does not exist: %d", id)
 	}
+
+	log.Logf("Dispatching message on stream: %d", id)
 
 	return m.m[id].Dispatch(msg)
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"io"
 
 	"github.com/micro/go-log"
 	"github.com/micro/go-micro"
@@ -27,12 +28,24 @@ func main() {
 		log.Fatal(err)
 	}
 
+	retries := 5
 	for {
 		msg, err := stream.Recv()
+		if err == io.EOF {
+			log.Logf("Stream publisher disconnected")
+			break
+		}
+
 		if err != nil {
 			log.Logf("Error receiving message from stream: %d", id)
-			continue
+			retries--
 		}
+
+		if retries == 0 {
+			log.Logf("Reached retry threshold, bailing...")
+			break
+		}
+
 		log.Logf("Received message from stream %d: %v", id, msg)
 	}
 }
