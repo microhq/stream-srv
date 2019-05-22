@@ -20,7 +20,7 @@ type Dispatcher struct {
 }
 
 // Dispatch dispatches the message to all subscribers in subscription s
-func (d *Dispatcher) Dispatch(ch <-chan *pb.Msg, done chan struct{}, wg *sync.WaitGroup) {
+func (d *Dispatcher) Dispatch(ch <-chan *pb.Message, done chan struct{}, wg *sync.WaitGroup) {
 	id := d.s.GetID()
 	defer wg.Done()
 	for {
@@ -112,7 +112,7 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 		if err != nil {
 			log.Logf("Error getting message channel: %v", err)
 		} else {
-			go func(msg *pb.Msg) {
+			go func(msg *pb.Message) {
 				ch <- msg
 			}(msg)
 		}

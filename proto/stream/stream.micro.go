@@ -10,7 +10,7 @@ It is generated from these files:
 It has these top-level messages:
 	CreateRequest
 	CreateResponse
-	Msg
+	Message
 	PubResponse
 	SubscribeRequest
 */
@@ -79,7 +79,7 @@ func (c *streamService) Create(ctx context.Context, in *CreateRequest, opts ...c
 }
 
 func (c *streamService) Publish(ctx context.Context, opts ...client.CallOption) (Stream_PublishService, error) {
-	req := c.c.NewRequest(c.name, "Stream.Publish", &Msg{})
+	req := c.c.NewRequest(c.name, "Stream.Publish", &Message{})
 	stream, err := c.c.Stream(ctx, req, opts...)
 	if err != nil {
 		return nil, err
@@ -91,7 +91,7 @@ type Stream_PublishService interface {
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
 	Close() error
-	Send(*Msg) error
+	Send(*Message) error
 }
 
 type streamServicePublish struct {
@@ -110,7 +110,7 @@ func (x *streamServicePublish) RecvMsg(m interface{}) error {
 	return x.stream.Recv(m)
 }
 
-func (x *streamServicePublish) Send(m *Msg) error {
+func (x *streamServicePublish) Send(m *Message) error {
 	return x.stream.Send(m)
 }
 
@@ -130,7 +130,7 @@ type Stream_SubscribeService interface {
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
 	Close() error
-	Recv() (*Msg, error)
+	Recv() (*Message, error)
 }
 
 type streamServiceSubscribe struct {
@@ -149,8 +149,8 @@ func (x *streamServiceSubscribe) RecvMsg(m interface{}) error {
 	return x.stream.Recv(m)
 }
 
-func (x *streamServiceSubscribe) Recv() (*Msg, error) {
-	m := new(Msg)
+func (x *streamServiceSubscribe) Recv() (*Message, error) {
+	m := new(Message)
 	err := x.stream.Recv(m)
 	if err != nil {
 		return nil, err
@@ -195,7 +195,7 @@ type Stream_PublishStream interface {
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
 	Close() error
-	Recv() (*Msg, error)
+	Recv() (*Message, error)
 }
 
 type streamPublishStream struct {
@@ -214,8 +214,8 @@ func (x *streamPublishStream) RecvMsg(m interface{}) error {
 	return x.stream.Recv(m)
 }
 
-func (x *streamPublishStream) Recv() (*Msg, error) {
-	m := new(Msg)
+func (x *streamPublishStream) Recv() (*Message, error) {
+	m := new(Message)
 	if err := x.stream.Recv(m); err != nil {
 		return nil, err
 	}
@@ -234,7 +234,7 @@ type Stream_SubscribeStream interface {
 	SendMsg(interface{}) error
 	RecvMsg(interface{}) error
 	Close() error
-	Send(*Msg) error
+	Send(*Message) error
 }
 
 type streamSubscribeStream struct {
@@ -253,6 +253,6 @@ func (x *streamSubscribeStream) RecvMsg(m interface{}) error {
 	return x.stream.Recv(m)
 }
 
-func (x *streamSubscribeStream) Send(m *Msg) error {
+func (x *streamSubscribeStream) Send(m *Message) error {
 	return x.stream.Send(m)
 }

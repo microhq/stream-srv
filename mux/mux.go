@@ -104,7 +104,7 @@ func (m *Mux) GetSubscription(id string) (*sub.Subscription, error) {
 }
 
 // GetChan returns message channel for given stream
-func (m *Mux) GetChan(id string) (chan *pb.Msg, error) {
+func (m *Mux) GetChan(id string) (chan *pb.Message, error) {
 	if _, ok := m.m[id]; !ok {
 		return nil, fmt.Errorf("Stream does not exist: %s", id)
 	}

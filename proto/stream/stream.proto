@@ -4,8 +4,8 @@ package go.micro.srv.stream;
 
 service Stream {
 	rpc Create(CreateRequest) returns (CreateResponse) {}
-        rpc Publish(stream Msg) returns (PubResponse) {}
-        rpc Subscribe(SubscribeRequest) returns (stream Msg) {}
+        rpc Publish(stream Message) returns (PubResponse) {}
+        rpc Subscribe(SubscribeRequest) returns (stream Message) {}
 }
 
 message CreateRequest {
@@ -14,7 +14,7 @@ message CreateRequest {
 
 message CreateResponse {}
 
-message Msg {
+message Message {
         string id = 1;
         bytes data = 2;
 }

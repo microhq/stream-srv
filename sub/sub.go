@@ -114,14 +114,14 @@ type Subscription struct {
 	// id is stream id
 	id string
 	// ch is channel for streaming messages
-	ch chan *pb.Msg
+	ch chan *pb.Message
 	// subs is a map of subscribers
 	subs *Subscribers
 }
 
 // New creates new subscription
 func New(id string) (*Subscription, error) {
-	ch := make(chan *pb.Msg)
+	ch := make(chan *pb.Message)
 	smap := make(map[uuid.UUID]*Subscriber)
 	subs := &Subscribers{smap: smap}
 
@@ -133,7 +133,7 @@ func New(id string) (*Subscription, error) {
 }
 
 // GetChan returns subscription channel
-func (s *Subscription) GetChan() chan *pb.Msg {
+func (s *Subscription) GetChan() chan *pb.Message {
 	return s.ch
 }
 
