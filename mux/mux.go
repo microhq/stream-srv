@@ -15,7 +15,7 @@ type Mux struct {
 	m map[string]sub.Dispatcher
 	// wg keep strack of Mux goroutines
 	wg *sync.WaitGroup
-	sync.Mutex
+	sync.RWMutex
 }
 
 // New creates new Mux and returns it
@@ -76,8 +76,8 @@ func (m *Mux) RemoveStream(id string) error {
 
 // AddSub adds new subscriber to stream id
 func (m *Mux) AddSub(id string, s sub.Subscriber) error {
-	m.Lock()
-	defer m.Unlock()
+	m.RLock()
+	defer m.RUnlock()
 
 	if _, ok := m.m[id]; !ok {
 		return fmt.Errorf("Stream does not exist: %s", id)
@@ -94,8 +94,8 @@ func (m *Mux) AddSub(id string, s sub.Subscriber) error {
 
 // RemSub removes subscriber from stream id
 func (m *Mux) RemSub(id string, s sub.Subscriber) error {
-	m.Lock()
-	defer m.Unlock()
+	m.RLock()
+	defer m.RUnlock()
 
 	if _, ok := m.m[id]; !ok {
 		return fmt.Errorf("Stream does not exist: %s", id)
@@ -112,20 +112,19 @@ func (m *Mux) RemSub(id string, s sub.Subscriber) error {
 
 // Publish sends the message down to dispatcher
 func (m *Mux) Publish(msg *pb.Message) error {
-	m.Lock()
-	defer m.Unlock()
+	m.RLock()
+	defer m.RUnlock()
 
-	id := msg.Id
-	if _, ok := m.m[id]; !ok {
-		return fmt.Errorf("Stream does not exist: %s", id)
+	if _, ok := m.m[msg.Id]; !ok {
+		return fmt.Errorf("Stream does not exist: %s", msg.Id)
 	}
 
-	log.Logf("Dispatching message on stream: %s", id)
+	log.Logf("Dispatching message on stream: %s", msg.Id)
 
 	m.wg.Add(1)
 	go func(msg *pb.Message) {
 		m.wg.Done()
-		m.m[id].Dispatch(msg)
+		m.m[msg.Id].Dispatch(msg)
 	}(msg)
 
 	return nil
@@ -133,8 +132,8 @@ func (m *Mux) Publish(msg *pb.Message) error {
 
 // Stop stops Mux
 func (m *Mux) Stop() error {
-	m.Lock()
-	defer m.Unlock()
+	m.RLock()
+	defer m.RUnlock()
 
 	// stop all active dispatchers
 	for id, _ := range m.m {

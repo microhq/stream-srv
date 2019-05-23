@@ -210,7 +210,12 @@ func (d *dispatcher) Start(wg *sync.WaitGroup) {
 
 // Dispatch dispatches the message to the channel
 func (d *dispatcher) Dispatch(msg *pb.Message) error {
-	d.in <- msg
+	select {
+	case <-d.done:
+		// we're done here; close the channel
+		return nil
+	case d.in <- msg:
+	}
 	return nil
 }
 
