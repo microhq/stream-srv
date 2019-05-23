@@ -14,7 +14,6 @@ type Subscriber interface {
 	ID() uuid.UUID
 	// Stream returns stream
 	Stream() pb.Stream_SubscribeStream
-	// NOTE: Might be better to call this Notify
 	// Stop stops subscriber
 	Stop() error
 	// Done returns done channel

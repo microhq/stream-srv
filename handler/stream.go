@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"sync"
 
 	"github.com/micro/go-log"
 
@@ -41,7 +40,7 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 	log.Logf("Received Stream.Create request with id: %s", req.Id)
 
 	// Add new stream to stream multiplexer
-	if err := s.Mux.AddStream(req.Id, 10); err != nil {
+	if err := s.Mux.AddStream(req.Id, 100); err != nil {
 		return fmt.Errorf("Unable to create new stream: %s", err)
 	}
 
@@ -51,7 +50,6 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 // Publish publishes data on stream
 func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) error {
 	var id string
-	wg := &sync.WaitGroup{}
 	errCount := 0
 
 	for {
@@ -68,23 +66,20 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 			continue
 		}
 
+		// NOTE: this is an arbitrary selected value
 		if errCount > 5 {
-			// NOTE: this is an arbitrary selected value
 			log.Logf("Error threshold reached for stream: %s", id)
 			break
 		}
 
-		log.Logf("Received msg on stream: %s", id)
+		log.Logf("Server received msg on stream: %s", id)
 
-		wg.Add(1)
-		go func(msg *pb.Message) {
-			defer wg.Done()
-			s.Mux.Publish(msg)
-		}(msg)
+		if err := s.Mux.Publish(msg); err != nil {
+			log.Logf("Error publishing on stream %s: %v", id, err)
+			errCount++
+			break
+		}
 	}
-
-	// wait for all the publisher goroutine to finish
-	wg.Wait()
 
 	// remove the stream from Mux
 	return s.Mux.RemoveStream(id)

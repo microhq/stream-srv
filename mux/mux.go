@@ -122,7 +122,13 @@ func (m *Mux) Publish(msg *pb.Message) error {
 
 	log.Logf("Dispatching message on stream: %s", id)
 
-	return m.m[id].Dispatch(msg)
+	m.wg.Add(1)
+	go func(msg *pb.Message) {
+		m.wg.Done()
+		m.m[id].Dispatch(msg)
+	}(msg)
+
+	return nil
 }
 
 // Stop stops Mux
