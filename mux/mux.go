@@ -112,6 +112,13 @@ func (m *Mux) RemSub(id string, s sub.Subscriber) error {
 
 // Publish sends the message down to dispatcher
 func (m *Mux) Publish(msg *pb.Message) error {
+	m.RLock()
+	defer m.RUnlock()
+
+	if _, ok := m.m[msg.Id]; !ok {
+		return fmt.Errorf("Stream does not exist: %s", m.m[msg.Id])
+	}
+
 	log.Logf("Dispatching message on stream: %s", msg.Id)
 
 	m.wg.Add(1)
