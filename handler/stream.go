@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"github.com/micro/go-log"
 
@@ -51,6 +52,7 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) error {
 	var id string
 	errCount := 0
+	wg := &sync.WaitGroup{}
 
 	for {
 		msg, err := stream.Recv()
@@ -74,12 +76,17 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 
 		log.Logf("Server received msg on stream: %s", id)
 
-		if err := s.Mux.Publish(msg); err != nil {
-			log.Logf("Error publishing on stream %s: %v", id, err)
-			errCount++
-			break
-		}
+		wg.Add(1)
+		go func(msg *pb.Message) {
+			defer wg.Done()
+			if err := s.Mux.Publish(msg); err != nil {
+				log.Logf("Error publishing on stream %s: %v", msg.Id, err)
+			}
+		}(msg)
 	}
+
+	// wait for all the publisher goroutine to finish
+	wg.Wait()
 
 	// remove the stream from Mux
 	return s.Mux.RemoveStream(id)
