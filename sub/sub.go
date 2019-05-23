@@ -9,140 +9,234 @@ import (
 	pb "github.com/microhq/stream-srv/proto/stream"
 )
 
-// Subscriber is a stream subscriber
-type Subscriber struct {
-	// ID is subscriber ID
-	ID uuid.UUID
-	// stream is Subscriber's stream
+type Subscriber interface {
+	// ID returns subscriber ID
+	ID() uuid.UUID
+	// Stream returns stream
+	Stream() pb.Stream_SubscribeStream
+	// NOTE: Might be better to call this Notify
+	// Stop stops subscriber
+	Stop() error
+	// Done returns done channel
+	Done() <-chan struct{}
+	// ErrChan returns error channel
+	ErrChan() chan error
+}
+
+// subscriber is a stream subscriber
+type subscriber struct {
+	// id is subscriber ID
+	id uuid.UUID
+	// stream is subscriber stream
 	stream pb.Stream_SubscribeStream
+	// done notifies subscriber to stop
+	done chan struct{}
 	// errChan is error channel
 	errChan chan error
 }
 
-func NewSubscriber(stream pb.Stream_SubscribeStream) (*Subscriber, error) {
-	ID := uuid.New()
+func NewSubscriber(stream pb.Stream_SubscribeStream) (*subscriber, error) {
+	id := uuid.New()
+	done := make(chan struct{})
 	errChan := make(chan error, 1)
 
-	return &Subscriber{
-		ID:      ID,
+	return &subscriber{
+		id:      id,
 		stream:  stream,
+		done:    done,
 		errChan: errChan,
 	}, nil
 }
 
-// GetID returns subscriber's ID
-func (s *Subscriber) GetID() uuid.UUID {
-	return s.ID
+// ID returns subscriber's ID
+func (s *subscriber) ID() uuid.UUID {
+	return s.id
 }
 
-// GetStream returns subscriber's stream
-func (s *Subscriber) GetStream() pb.Stream_SubscribeStream {
+// Stream returns subscriber stream
+func (s *subscriber) Stream() pb.Stream_SubscribeStream {
 	return s.stream
 }
 
-// GetErrChan returns subscriber's error channel
-func (s *Subscriber) GetErrChan() chan error {
+// Stop closes subscriber channel
+func (s *subscriber) Stop() error {
+	log.Logf("Stopping subscriber: %s", s.id)
+	close(s.done)
+	return nil
+}
+
+// Done returns done channel
+func (s *subscriber) Done() <-chan struct{} {
+	return s.done
+}
+
+// ErrChan returns subscriber error channel
+func (s *subscriber) ErrChan() chan error {
 	return s.errChan
 }
 
-// Subscribers is a stream subscription
-type Subscribers struct {
-	// smap is a map of subscribers
-	smap map[uuid.UUID]*Subscriber
+// Subscribers manages subscribers
+type Subscribers interface {
+	// Add adds new subscriber
+	Add(Subscriber) error
+	// Remove removes subscriber
+	Remove(uuid.UUID) error
+	// Get returns subscriber
+	Get(uuid.UUID) Subscriber
+	// AsList returns list of subscribers
+	AsList() []Subscriber
+}
+
+// subscribers is a map of stream subscribers
+type subscribers struct {
+	// sMap is a map of subscribers
+	sMap map[uuid.UUID]Subscriber
 	sync.Mutex
 }
 
 // Add adds a new subscriber
-func (s *Subscribers) Add(_s *Subscriber) error {
+func (s *subscribers) Add(_s Subscriber) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Logf("Adding subscriber: %s", _s.ID)
-
-	if _, ok := s.smap[_s.ID]; ok {
-		return fmt.Errorf("Subscriber already exists: %v", _s.ID)
+	if _, ok := s.sMap[_s.ID()]; ok {
+		return fmt.Errorf("Subscriber already exists: %v", _s.ID())
 	}
-	s.smap[_s.ID] = _s
+
+	s.sMap[_s.ID()] = _s
 
 	return nil
 }
 
 // Remove removes subscriber
-func (s *Subscribers) Remove(id uuid.UUID) error {
+func (s *subscribers) Remove(id uuid.UUID) error {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Logf("Removing subscriber %s", id)
-
-	delete(s.smap, id)
+	delete(s.sMap, id)
 
 	return nil
 }
 
-// Get returns a subscriber with id
-func (s *Subscribers) Get(id uuid.UUID) *Subscriber {
+// Get returns subscriber with id
+func (s *subscribers) Get(id uuid.UUID) Subscriber {
 	s.Lock()
 	defer s.Unlock()
 
 	log.Log("Retrieveing subscriber: %s", id)
 
-	return s.smap[id]
+	return s.sMap[id]
 }
 
 // AsList returns a slice of all subscribers
-func (s *Subscribers) AsList() []*Subscriber {
+func (s *subscribers) AsList() []Subscriber {
 	s.Lock()
 	defer s.Unlock()
 
-	log.Log("Retrieveing subscribers")
-
-	subs := make([]*Subscriber, len(s.smap))
+	subs := make([]Subscriber, len(s.sMap))
 
 	i := 0
-	for _, sub := range s.smap {
+	for _, sub := range s.sMap {
 		subs[i] = sub
 		i++
 	}
 
-	log.Logf("Subscribers retrieved: %d", len(subs))
+	log.Logf("Subscribers detected: %d", len(subs))
 
 	return subs
 }
 
-// Subscription provides a stream subscription
-type Subscription struct {
-	// id is stream id
-	id string
-	// ch is channel for streaming messages
-	ch chan *pb.Message
-	// subs is a map of subscribers
-	subs *Subscribers
+// Dispatcher dispatches stream data to stream subscribers
+type Dispatcher interface {
+	// Start starts message dispatcher
+	Start(*sync.WaitGroup)
+	// Subscribers returns subscribers
+	Subscribers() Subscribers
+	// Dispatch dispatches the message
+	Dispatch(*pb.Message) error
+	// Stop stops dispatcher
+	Stop() error
 }
 
-// New creates new subscription
-func New(id string) (*Subscription, error) {
-	ch := make(chan *pb.Message)
-	smap := make(map[uuid.UUID]*Subscriber)
-	subs := &Subscribers{smap: smap}
+// TODO: Dispatcher should have a worker pool
+// dispatcher implements stream dispatcher
+type dispatcher struct {
+	// id is stream id
+	id string
+	// in receives messages from publisher
+	in chan *pb.Message
+	// done is a stop notification channel
+	done chan struct{}
+	// s is a map of stream subscribers
+	s *subscribers
+}
 
-	return &Subscription{
+// NewDispatcher creates new message dispatcher
+func NewDispatcher(id string, size int) (Dispatcher, error) {
+	// bufferred message channel
+	in := make(chan *pb.Message, size)
+	// done notification channel
+	done := make(chan struct{})
+	// sMap is a map of stream subscribers
+	sMap := make(map[uuid.UUID]Subscriber)
+	s := &subscribers{sMap: sMap}
+
+	return &dispatcher{
 		id:   id,
-		ch:   ch,
-		subs: subs,
+		in:   in,
+		done: done,
+		s:    s,
 	}, nil
 }
 
-// GetChan returns subscription channel
-func (s *Subscription) GetChan() chan *pb.Message {
-	return s.ch
+// Start starts message dispatcher
+func (d *dispatcher) Start(wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		select {
+		case <-d.done:
+			log.Logf("Stopping dispatcher for stream: %s", d.id)
+			return
+		case msg := <-d.in:
+			log.Logf("Dispatching message to subscribers on stream: %s", d.id)
+			for _, sub := range d.s.AsList() {
+				if err := sub.Stream().Send(msg); err != nil {
+					// send the error down subscriber error channel
+					sub.ErrChan() <- err
+				}
+			}
+		}
+	}
 }
 
-// GetSubs returns all subscription subscribers
-func (s *Subscription) GetSubs() *Subscribers {
-	return s.subs
+// Dispatch dispatches the message to the channel
+func (d *dispatcher) Dispatch(msg *pb.Message) error {
+	d.in <- msg
+	return nil
 }
 
-// GetID gets Subscription ID
-func (s *Subscription) GetID() string {
-	return s.id
+// Subscribers returns a list of subscribers
+func (d *dispatcher) Subscribers() Subscribers {
+	return d.s
+}
+
+// Stop stops dispatcher
+func (d *dispatcher) Stop() error {
+	// close the channels
+	close(d.done)
+	close(d.in)
+
+	// notify all subscribers to finish
+	for _, s := range d.s.sMap {
+		if err := s.Stop(); err != nil {
+			return fmt.Errorf("Failed to stop subscriber: %s", s.ID())
+		}
+	}
+
+	// drain incoming message channel
+	for range d.in {
+		// do nothing here
+	}
+
+	return nil
 }

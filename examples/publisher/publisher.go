@@ -34,7 +34,7 @@ func main() {
 
 	i := 0
 	for {
-		log.Logf("Publishing message %d to stream: %d", i, id)
+		log.Logf("Publishing message %d to stream: %s", i, id)
 		if err := stream.Send(&pb.Message{Id: id}); err != nil {
 			log.Logf("Error sending %dth message: %s", i, err)
 		}
