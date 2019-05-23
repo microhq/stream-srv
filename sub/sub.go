@@ -210,12 +210,13 @@ func (d *dispatcher) Start(wg *sync.WaitGroup) {
 
 // Dispatch dispatches the message to the channel
 func (d *dispatcher) Dispatch(msg *pb.Message) error {
+	// send message downstream or return
 	select {
 	case <-d.done:
-		// we're done here; close the channel
-		return nil
+		break
 	case d.in <- msg:
 	}
+
 	return nil
 }
 
@@ -226,20 +227,15 @@ func (d *dispatcher) Subscribers() Subscribers {
 
 // Stop stops dispatcher
 func (d *dispatcher) Stop() error {
+	log.Logf("Stopping dispatcher on stream: %s", d.id)
 	// close the channels
 	close(d.done)
-	close(d.in)
 
 	// notify all subscribers to finish
 	for _, s := range d.s.sMap {
 		if err := s.Stop(); err != nil {
 			return fmt.Errorf("Failed to stop subscriber: %s", s.ID())
 		}
-	}
-
-	// drain incoming message channel
-	for range d.in {
-		// do nothing here
 	}
 
 	return nil

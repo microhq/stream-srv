@@ -15,9 +15,9 @@ import (
 
 // Stream is a data stream
 type Stream struct {
-	// Mux maps stream ids to subscribers to allow stream multiplexing
+	// Mux maps streams to data dispatchers
 	Mux *mux.Mux
-	// done notifies Stream server to stop
+	// done notifies Stream  to stop
 	done chan struct{}
 }
 
@@ -35,12 +35,12 @@ func NewStream() (*Stream, error) {
 	}, nil
 }
 
-// Create creates new data stream.
+// Create creates new data stream. It creates new stream dispatcher.
 // It returns error if the requested stream id has already been registered.
 func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.CreateResponse) error {
 	log.Logf("Received Stream.Create request with id: %s", req.Id)
 
-	// Add new stream to stream multiplexer
+	// sdd new stream to stream multiplexer
 	if err := s.Mux.AddStream(req.Id, 100); err != nil {
 		return fmt.Errorf("Unable to create new stream: %s", err)
 	}
@@ -52,6 +52,8 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) error {
 	var id string
 	errCount := 0
+
+	// track all goroutine spun out of this
 	wg := &sync.WaitGroup{}
 
 	for {
@@ -68,7 +70,6 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 			continue
 		}
 
-		// NOTE: this is an arbitrary selected value
 		if errCount > 5 {
 			log.Logf("Error threshold reached for stream: %s", id)
 			break
@@ -79,13 +80,14 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 		wg.Add(1)
 		go func(msg *pb.Message) {
 			defer wg.Done()
-			if err := s.Mux.Publish(msg); err != nil {
+			// Publish() launches another goroutine: we need to keep track of it
+			if err := s.Mux.Publish(msg, wg); err != nil {
 				log.Logf("Error publishing on stream %s: %v", msg.Id, err)
 			}
 		}(msg)
 	}
 
-	// wait for all the publisher goroutine to finish
+	// wait for all the publisher goroutines to finish
 	wg.Wait()
 
 	// remove the stream from Mux
@@ -110,7 +112,7 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 	for {
 		select {
 		case <-s.done:
-			log.Logf("Stopping subscriber of stream: %s", id)
+			log.Logf("Stopping subscriber stream: %s", id)
 			// clean up is done in Stop() function
 			return nil
 		case err := <-sub.ErrChan():
@@ -119,13 +121,13 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 				errCount++
 			}
 
-			// NOTE: this is an arbitrary selected value
 			if errCount > 5 {
 				log.Logf("Error threshold reached for subscriber %s on stream: %s", sub.ID(), id)
 				return s.Mux.RemSub(id, sub)
 			}
 		case <-sub.Done():
 			// close the stream and return
+			log.Logf("Closing subscriber stream: %s", id)
 			return sub.Stream().Close()
 		}
 	}
@@ -134,7 +136,10 @@ func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream
 }
 
 func (s *Stream) Stop() error {
+	// notify running goroutines to stop
 	close(s.done)
+
+	// shut down multiplexer
 	if err := s.Mux.Stop(); err != nil {
 		return fmt.Errorf("Failed to stop stream multiplexer: %s", err)
 	}

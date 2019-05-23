@@ -66,7 +66,7 @@ func (m *Mux) RemoveStream(id string) error {
 	log.Logf("Removing stream: %s", id)
 
 	if err := m.m[id].Stop(); err != nil {
-		return fmt.Errorf("Failed to stop stream %s dispatched: %s", id, err)
+		return fmt.Errorf("Failed to stop stream %s dispatcher: %s", id, err)
 	}
 
 	delete(m.m, id)
@@ -111,7 +111,7 @@ func (m *Mux) RemSub(id string, s sub.Subscriber) error {
 }
 
 // Publish sends the message down to dispatcher
-func (m *Mux) Publish(msg *pb.Message) error {
+func (m *Mux) Publish(msg *pb.Message, wg *sync.WaitGroup) error {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -121,25 +121,29 @@ func (m *Mux) Publish(msg *pb.Message) error {
 
 	log.Logf("Dispatching message on stream: %s", msg.Id)
 
-	m.wg.Add(1)
+	wg.Add(1)
 	go func(msg *pb.Message) {
-		m.wg.Done()
+		defer wg.Done()
 		m.m[msg.Id].Dispatch(msg)
 	}(msg)
 
 	return nil
 }
 
-// Stop stops Mux
+// Stop stops all multiplexer dispatchers and waits for all goroutines to finish
 func (m *Mux) Stop() error {
-	m.RLock()
-	defer m.RUnlock()
+	m.Lock()
+	defer m.Unlock()
 
 	// stop all active dispatchers
 	for id, _ := range m.m {
-		if err := m.RemoveStream(id); err != nil {
-			return fmt.Errorf("Failed to remove stream %s: %s", id, err)
+		log.Logf("Stopping stream: %s", id)
+
+		if err := m.m[id].Stop(); err != nil {
+			return fmt.Errorf("Failed to stop stream %s dispatcher: %s", id, err)
 		}
+
+		delete(m.m, id)
 	}
 
 	m.wg.Wait()
