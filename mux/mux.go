@@ -111,7 +111,7 @@ func (m *Mux) RemSub(id string, s sub.Subscriber) error {
 }
 
 // Publish sends the message down to dispatcher
-func (m *Mux) Publish(msg *pb.Message, wg *sync.WaitGroup) error {
+func (m *Mux) Publish(msg *pb.Message) error {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -121,13 +121,7 @@ func (m *Mux) Publish(msg *pb.Message, wg *sync.WaitGroup) error {
 
 	log.Logf("Dispatching message on stream: %s", msg.Id)
 
-	wg.Add(1)
-	go func(msg *pb.Message) {
-		defer wg.Done()
-		m.m[msg.Id].Dispatch(msg)
-	}(msg)
-
-	return nil
+	return m.m[msg.Id].Dispatch(msg)
 }
 
 // Stop stops all multiplexer dispatchers and waits for all goroutines to finish

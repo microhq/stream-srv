@@ -81,7 +81,7 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 		go func(msg *pb.Message) {
 			defer wg.Done()
 			// Publish() launches another goroutine: we need to keep track of it
-			if err := s.Mux.Publish(msg, wg); err != nil {
+			if err := s.Mux.Publish(msg); err != nil {
 				log.Logf("Error publishing on stream %s: %v", msg.Id, err)
 			}
 		}(msg)

@@ -194,7 +194,7 @@ func (d *dispatcher) Start(wg *sync.WaitGroup) {
 	for {
 		select {
 		case <-d.done:
-			log.Logf("Stopping dispatcher for stream: %s", d.id)
+			log.Logf("Received notification to stop dispatcher on stream: %s", d.id)
 			return
 		case msg := <-d.in:
 			log.Logf("Dispatching message to subscribers on stream: %s", d.id)
@@ -227,9 +227,10 @@ func (d *dispatcher) Subscribers() Subscribers {
 
 // Stop stops dispatcher
 func (d *dispatcher) Stop() error {
-	log.Logf("Stopping dispatcher on stream: %s", d.id)
 	// close the channels
 	close(d.done)
+
+	log.Logf("Stopping dispatcher on stream: %s", d.id)
 
 	// notify all subscribers to finish
 	for _, s := range d.s.sMap {
