@@ -63,19 +63,18 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 			break
 		}
 
-		id = msg.Id
 		if err != nil {
-			log.Logf("Error publishing on stream %s: %v", id, err)
+			log.Logf("Error publishing on stream: %v", err)
 			errCount++
 			continue
 		}
 
 		if errCount > 5 {
-			log.Logf("Error threshold reached for stream: %s", id)
+			log.Logf("Error threshold reached for stream")
 			break
 		}
 
-		log.Logf("Server received msg on stream: %s", id)
+		log.Logf("Server received msg on stream: %s", msg.Id)
 
 		wg.Add(1)
 		go func(msg *pb.Message) {
