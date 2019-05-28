@@ -13,18 +13,22 @@ import (
 type Mux struct {
 	// m maps stream to Sink
 	m map[string]sub.Dispatcher
+	// done notifies mux goroutines to stop
+	done chan struct{}
 	// wg keep strack of Mux goroutines
 	wg *sync.WaitGroup
 	sync.RWMutex
 }
 
-// New creates new Mux and returns it
+// New creates new Mux and returns it.
 func New() (*Mux, error) {
 	m := make(map[string]sub.Dispatcher)
+	done := make(chan struct{})
 
 	return &Mux{
-		m:  m,
-		wg: new(sync.WaitGroup),
+		m:    m,
+		done: done,
+		wg:   new(sync.WaitGroup),
 	}, nil
 }
 
@@ -46,16 +50,17 @@ func (m *Mux) AddStream(id string, size int) error {
 
 	// need to track all dispatcher goroutines
 	m.wg.Add(1)
+
 	// start dispatcher
-	go d.Start(m.wg)
+	go d.Run(m.wg)
 
 	m.m[id] = d
 
 	return nil
 }
 
-// RemoveStream removes stream from Mux
-func (m *Mux) RemoveStream(id string) error {
+// DelStream removes stream from Mux
+func (m *Mux) DelStream(id string, wg *sync.WaitGroup) error {
 	m.Lock()
 	defer m.Unlock()
 
@@ -69,13 +74,18 @@ func (m *Mux) RemoveStream(id string) error {
 		return fmt.Errorf("Failed to stop stream %s dispatcher: %s", id, err)
 	}
 
+	log.Logf("Waiting for stream publisher goroutine to finish...")
+
+	// wait for all the publisher goroutines to finish
+	wg.Wait()
+
 	delete(m.m, id)
 
 	return nil
 }
 
-// AddSub adds new subscriber to stream id
-func (m *Mux) AddSub(id string, s sub.Subscriber) error {
+// AddStreamSub adds new subscriber to stream
+func (m *Mux) AddStreamSub(id string, s sub.Subscriber) error {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -83,17 +93,18 @@ func (m *Mux) AddSub(id string, s sub.Subscriber) error {
 		return fmt.Errorf("Stream does not exist: %s", id)
 	}
 
-	log.Logf("Adding subcriber %s to stream: %s", s.ID(), id)
-
-	if err := m.m[id].Subscribers().Add(s); err != nil {
-		return err
+	select {
+	case m.m[id].CmdChan() <- &sub.Cmd{sub.Add, s}:
+		log.Logf("Adding subscriber %s on stream: %s", s.ID(), id)
+	case <-m.m[id].DoneChan():
+		// do nothing here
 	}
 
 	return nil
 }
 
-// RemSub removes subscriber from stream id
-func (m *Mux) RemSub(id string, s sub.Subscriber) error {
+// DelStreamSub deletes subscriber s from stream id
+func (m *Mux) DelStreamSub(id string, s sub.Subscriber) error {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -101,17 +112,18 @@ func (m *Mux) RemSub(id string, s sub.Subscriber) error {
 		return fmt.Errorf("Stream does not exist: %s", id)
 	}
 
-	log.Logf("Removing subcriber %s from stream: %s", s.ID(), id)
-
-	if err := m.m[id].Subscribers().Remove(s.ID()); err != nil {
-		return err
+	select {
+	case m.m[id].CmdChan() <- &sub.Cmd{sub.Del, s}:
+		log.Logf("Deleting subscriber %s from stream: %s", s.ID(), id)
+	case <-m.m[id].DoneChan():
+		// do nothing here
 	}
 
 	return nil
 }
 
-// Publish sends the message down to dispatcher
-func (m *Mux) Publish(msg *pb.Message) error {
+// Send sends the message downstream to dispatcher
+func (m *Mux) Send(msg *pb.Message) error {
 	m.RLock()
 	defer m.RUnlock()
 
@@ -119,9 +131,14 @@ func (m *Mux) Publish(msg *pb.Message) error {
 		return fmt.Errorf("Stream does not exist: %s", m.m[msg.Id])
 	}
 
-	log.Logf("Dispatching message on stream: %s", msg.Id)
+	select {
+	case m.m[msg.Id].MsgChan() <- msg:
+		log.Logf("Sending message on stream: %s", msg.Id)
+	case <-m.m[msg.Id].DoneChan():
+		// do nothing here
+	}
 
-	return m.m[msg.Id].Dispatch(msg)
+	return nil
 }
 
 // Stop stops all multiplexer dispatchers and waits for all goroutines to finish
@@ -131,7 +148,7 @@ func (m *Mux) Stop() error {
 
 	// stop all active dispatchers
 	for id, _ := range m.m {
-		log.Logf("Stopping stream: %s", id)
+		log.Logf("Stopping stream dispatcher: %s", id)
 
 		if err := m.m[id].Stop(); err != nil {
 			return fmt.Errorf("Failed to stop stream %s dispatcher: %s", id, err)
@@ -140,6 +157,8 @@ func (m *Mux) Stop() error {
 		delete(m.m, id)
 	}
 
+	// wait for all the goroutines to finish
 	m.wg.Wait()
+
 	return nil
 }

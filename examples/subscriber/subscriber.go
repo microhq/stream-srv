@@ -39,6 +39,8 @@ func main() {
 		if err != nil {
 			log.Logf("Error receiving message from stream: %s", id)
 			retries--
+		} else {
+			log.Logf("Received message from stream %s: %v", id, msg)
 		}
 
 		if retries == 0 {
@@ -46,6 +48,5 @@ func main() {
 			break
 		}
 
-		log.Logf("Received message from stream %s: %v", id, msg)
 	}
 }

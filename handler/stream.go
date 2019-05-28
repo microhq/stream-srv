@@ -21,6 +21,8 @@ type Stream struct {
 	done chan struct{}
 }
 
+// NewStream creates new stream and  returns it.
+// It returns error if stream multiplexer fails to be created.
 func NewStream() (*Stream, error) {
 	mux, err := mux.New()
 	if err != nil {
@@ -51,6 +53,7 @@ func (s *Stream) Create(ctx context.Context, req *pb.CreateRequest, resp *pb.Cre
 // Publish publishes data on stream
 func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) error {
 	var id string
+	// keep track of publisher errors
 	errCount := 0
 
 	// track all goroutine spun out of this
@@ -69,65 +72,52 @@ func (s *Stream) Publish(ctx context.Context, stream pb.Stream_PublishStream) er
 			continue
 		}
 
+		// initialize stream id
+		id = msg.Id
+
 		if errCount > 5 {
-			log.Logf("Error threshold reached for stream")
+			log.Logf("Error threshold reached for stream: %s", id)
 			break
 		}
 
-		log.Logf("Server received msg on stream: %s", msg.Id)
+		log.Logf("Server received msg on stream: %s", id)
 
 		wg.Add(1)
 		go func(msg *pb.Message) {
 			defer wg.Done()
-			// Publish() launches another goroutine: we need to keep track of it
-			if err := s.Mux.Publish(msg); err != nil {
-				log.Logf("Error publishing on stream %s: %v", msg.Id, err)
+			if err := s.Mux.Send(msg); err != nil {
+				log.Logf("Error sending messag on stream %s: %v", id, err)
 			}
 		}(msg)
 	}
 
-	// wait for all the publisher goroutines to finish
-	wg.Wait()
-
 	// remove the stream from Mux
-	return s.Mux.RemoveStream(id)
+	return s.Mux.DelStream(id, wg)
 }
 
 func (s *Stream) Subscribe(ctx context.Context, req *pb.SubscribeRequest, stream pb.Stream_SubscribeStream) error {
 	log.Logf("Received Stream.Subscribe request for stream: %s", req.Id)
 
 	id := req.Id
-	errCount := 0
 
 	sub, err := sub.NewSubscriber(stream)
 	if err != nil {
 		return fmt.Errorf("Failed to create new subscriber for stream %s: %s", id, err)
 	}
 
-	if err := s.Mux.AddSub(id, sub); err != nil {
-		return fmt.Errorf("Failed to add %v to stream: %s", sub.ID(), id)
-	}
+	go func() {
+		s.Mux.AddStreamSub(id, sub)
+	}()
 
 	for {
 		select {
-		case <-s.done:
-			log.Logf("Stopping subscriber stream: %s", id)
-			// clean up is done in Stop() function
-			return nil
-		case err := <-sub.ErrChan():
-			if err != nil {
-				log.Logf("Error receiving message on stream %s: %s", id, err)
-				errCount++
-			}
-
-			if errCount > 5 {
-				log.Logf("Error threshold reached for subscriber %s on stream: %s", sub.ID(), id)
-				return s.Mux.RemSub(id, sub)
-			}
-		case <-sub.Done():
+		case <-sub.DoneChan():
 			// close the stream and return
-			log.Logf("Closing subscriber stream: %s", id)
+			log.Logf("Closing subscriber %s stream: %s", sub.ID(), id)
 			return sub.Stream().Close()
+		case <-s.done:
+			log.Logf("Stopping stream handler: %s", id)
+			return nil
 		}
 	}
 
